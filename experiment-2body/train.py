@@ -19,10 +19,10 @@ def get_args():
     parser.add_argument('--input_dim', default=2*4, type=int, help='dimensionality of input tensor')
     parser.add_argument('--hidden_dim', default=200, type=int, help='hidden dimension of mlp')
     parser.add_argument('--learn_rate', default=1e-3, type=float, help='learning rate')
-    parser.add_argument('--batch_size', default=200, type=int, help='batch_size')
+    parser.add_argument('--batch_size', default=128, type=int, help='batch_size')
     parser.add_argument('--input_noise', default=0.0, type=int, help='std of noise added to inputs')
     parser.add_argument('--nonlinearity', default='tanh', type=str, help='neural net nonlinearity')
-    parser.add_argument('--total_steps', default=10000, type=int, help='number of gradient steps')
+    parser.add_argument('--total_steps', default=50000, type=int, help='number of gradient steps')
     parser.add_argument('--print_every', default=200, type=int, help='number of gradient steps between prints')
     parser.add_argument('--name', default='2body', type=str, help='only one option right now')
     parser.add_argument('--baseline', dest='baseline', action='store_true', help='run baseline or experiment?')
@@ -37,6 +37,13 @@ def train(args):
   # set random seed
   torch.manual_seed(args.seed)
   np.random.seed(args.seed)
+  
+  # check and set device
+  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+  print(f"Using device: {device}")
+  if device.type == 'cuda':
+    print(f"GPU: {torch.cuda.get_device_name(0)}")
+    print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
 
   # init model and optimizer
   if args.verbose:
@@ -46,14 +53,21 @@ def train(args):
   nn_model = MLP(args.input_dim, args.hidden_dim, output_dim, args.nonlinearity)
   model = HNN(args.input_dim, differentiable_model=nn_model,
             field_type=args.field_type, baseline=args.baseline)
+  model = model.to(device)  # move model to GPU
   optim = torch.optim.Adam(model.parameters(), args.learn_rate, weight_decay=0)
 
-  # arrange data
-  data = get_dataset(args.name, args.save_dir, verbose=True)
-  x = torch.tensor( data['coords'], requires_grad=True, dtype=torch.float32)
-  test_x = torch.tensor( data['test_coords'], requires_grad=True, dtype=torch.float32)
-  dxdt = torch.Tensor(data['dcoords'])
-  test_dxdt = torch.Tensor(data['test_dcoords'])
+  # arrange data with custom parameters
+  # Compromise: Generate reasonable amount of diverse data
+  # This gives us plenty of variety without excessive generation time
+  trials_needed = 50000*128  # Generate 400k orbits, each with 30 timesteps = 12M samples
+  data = get_dataset(args.name, args.save_dir, verbose=True, 
+                     timesteps=30, trials=trials_needed, orbit_noise=0.1, t_span=[0, 1.5])
+  x = torch.tensor( data['coords'], requires_grad=True, dtype=torch.float32).to(device)
+  test_x = torch.tensor( data['test_coords'], requires_grad=True, dtype=torch.float32).to(device)
+  dxdt = torch.Tensor(data['dcoords']).to(device)
+  test_dxdt = torch.Tensor(data['test_dcoords']).to(device)
+  print(f"Training data shape: {x.shape}")
+  print(f"Test data shape: {test_x.shape}")
 
   # vanilla train loop
   stats = {'train_loss': [], 'test_loss': []}
