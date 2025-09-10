@@ -113,17 +113,8 @@ def sample_orbits(timesteps=50, trials=1000, nbodies=2, orbit_noise=5e-2,
         print(f"Generating {trials} orbits with {timesteps} timesteps each...")
         print(f"Total data points: {trials * timesteps}")
     
-    # Add progress bar
-    try:
-        from tqdm import tqdm
-        progress_bar = tqdm(total=trials, desc="Generating orbits")
-    except ImportError:
-        print("tqdm not available, install with: pip install tqdm")
-        progress_bar = None
-    
     x, dx, e = [], [], []
     N = timesteps*trials
-    orbits_generated = 0
     while len(x) < N:
 
         state = random_config(orbit_noise, min_radius, max_radius)
@@ -143,16 +134,6 @@ def sample_orbits(timesteps=50, trials=1000, nbodies=2, orbit_noise=5e-2,
             shaped_state = state.copy().reshape(2,5,1)
             e.append(total_energy(shaped_state))
         
-        orbits_generated += 1
-        if progress_bar is not None:
-            progress_bar.update(1)
-            # Update description with ETA info
-            if orbits_generated % 100 == 0:  # Update every 100 orbits
-                progress_bar.set_description(f"Generated {orbits_generated}/{trials} orbits")
-
-    if progress_bar is not None:
-        progress_bar.close()
-    
     if verbose:
         print(f"Successfully generated {len(x)} data points from {orbits_generated} orbits")
     
